@@ -1,8 +1,6 @@
 function Migrator(db){
 	// Pending migrations to run
 	var migrations = [];
-	// Callbacks to run when migrations done
-	var whenDone = [];
 
 	var state = 0;
 	
@@ -16,88 +14,91 @@ function Migrator(db){
 	
 	// Execute a given migration by index
 	var doMigration = function(number){
-		if(migrations[number]){
-			db.transaction(function(t){
-				t.executeSql("update " + MIGRATOR_TABLE + " set version = ?", [number], function(t){
-					debug(Migrator.DEBUG_HIGH, "Beginning migration %d", [number]);
-					migrations[number](t);
-					debug(Migrator.DEBUG_HIGH, "Completed migration %d", [number]);
-					doMigration(number+1);
-				}, function(t, err){
-					error("Error!: %o (while upgrading to %s from %s)", err, number);
-				})
-			});
-		} else {
-			debug(Migrator.DEBUG_HIGH, "Migrations complete, executing callbacks.");
-			state = 2;
-			executeWhenDoneCallbacks();
-		}
+		var promise = new Promise(function(resolve, reject) {
+			if(migrations[number]){
+				db.transaction(function(t){
+					t.executeSql("update " + MIGRATOR_TABLE + " set version = ?", [number], 
+						function(t){
+							debug(Migrator.DEBUG_HIGH, "Beginning migration %d", [number]);
+							migrations[number](t);
+							debug(Migrator.DEBUG_HIGH, "Completed migration %d", [number]);
+							doMigration(number+1).then(function() {
+								resolve();
+							});
+						}, function(t, err){
+							error("Error!: %o (while upgrading to %s from %s)", err, number);
+							reject(err);
+					});
+				});
+			} else {
+				debug(Migrator.DEBUG_HIGH, "Migrations complete.");
+				state = 2;
+				resolve();
+			}
+		});
+
+		return promise;
 	};
 	
 	// helper that actually calls doMigration from doIt.
 	var migrateStartingWith = function(ver){
-		state = 1;
-		debug(Migrator.DEBUG_LOW, "Main Migrator starting.");
+		var promise = new Promise(function(resolve, reject) {
+			state = 1;
+			debug(Migrator.DEBUG_LOW, "Main Migrator starting.");
 
-		try {
-			doMigration(ver+1);
-		} catch(e) {
-			error(e);
-		}
+			try {
+				return doMigration(ver+1).then(function() 
+				{
+					resolve();
+				});
+			} catch(e) {
+				error(e);
+				reject(e);
+			}
+		});
+
+		return promise;
 	};
 
 	this.execute = function(){
-		if(state > 0){
-			throw "Migrator is only valid once -- create a new one if you want to do another migration.";
-		}
-		db.transaction(function(t){
-			t.executeSql("select version from " + MIGRATOR_TABLE, [], function(t, res){
-				var rows = res.rows;
-				var version = rows.item(0).version;
-				debug(Migrator.DEBUG_HIGH, "Existing database present, migrating from %d", [version]);
-				migrateStartingWith(version);
-			}, function(t, err){
-				if(err.message.match(/no such table/i)){
-					t.executeSql("create table " + MIGRATOR_TABLE + "(version integer)", [], function(){
-						t.executeSql("insert into " + MIGRATOR_TABLE + " values(0)", [], function(){
-							debug(Migrator.DEBUG_HIGH, "New migration database created...");
-							migrateStartingWith(0);
-						}, function(t, err){
-							error("Unrecoverable error inserting initial version into db: %o", err);
-						});
-					}, function(t, err){
-						error("Unrecoverable error creating version table: %o", err);
+		var promise = new Promise(function(resolve, reject) {
+			if(state > 0){
+				throw "Migrator is only valid once -- create a new one if you want to do another migration.";
+			}
+			db.transaction(function(t){
+				t.executeSql("select version from " + MIGRATOR_TABLE, [], function(t, res){
+					var rows = res.rows;
+					var version = rows.item(0).version;
+					debug(Migrator.DEBUG_HIGH, "Existing database present, migrating from %d", [version]);
+					migrateStartingWith(version).then(function() {
+						resolve();
 					});
-				} else {
-					error("Unrecoverable error resolving schema version: %o", err);
-				}
+				}, function(t, err){
+					if(err.message.match(/no such table/i)){
+						t.executeSql("create table " + MIGRATOR_TABLE + "(version integer)", [], function(){
+							t.executeSql("insert into " + MIGRATOR_TABLE + " values(0)", [], function(){
+								debug(Migrator.DEBUG_HIGH, "New migration database created...");
+								migrateStartingWith(0).then(function() {
+									resolve();
+								});
+							}, function(t, err){
+								error("Unrecoverable error inserting initial version into db: %o", err);
+								reject(err);
+							});
+						}, function(t, err){
+							error("Unrecoverable error creating version table: %o", err);
+							reject(err);
+						});
+					} else {
+						error("Unrecoverable error resolving schema version: %o", err);
+						reject(err);
+					}
+				});
 			});
 		});
 
-		return this;
+		return promise;
 	};
-
-	// Called when the migration has completed.  If the migration has already completed,
-	// executes immediately.  Otherwise, waits.
-	this.whenDone = function(func){
-		if(typeof func !== "array"){
-			func = [func];
-		}
-		for(var f in func){
-			whenDone.push(func[f]);
-		}
-		if(state > 1){
-			debug(Migrator.DEBUG_LOW, "Executing 'whenDone' tasks immediately as the migrations have already finished.");
-			executeWhenDoneCallbacks();
-		}
-	};
-	
-	var executeWhenDoneCallbacks = function(){
-		for(var f in whenDone){
-			whenDone[f]();
-		}
-		debug(Migrator.DEBUG_LOW, "Callbacks complete.");
-	}
 	
 	// Debugging stuff.
 	var log = (window.console && console.log) ? function() { console.log.apply(console, argumentsToArray(arguments)) } : function(){};

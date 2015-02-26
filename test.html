@@ -30,7 +30,19 @@
 				});
 
 				// This executes the applicable transactions
-				M.execute();
+				M.execute().then(function() {
+					db.transaction(function(t){
+						t.executeSql("select id, name, phone from user", [], function(t, res){
+							var rows = res.rows;
+							var addressTable = $("table.address_book");
+							for(var i = 0; i < rows.length; i++){
+								var row = rows.item(i);
+								var domRow = $("<tr><td>"+row.id+"</td><td>"+row.name+"</td><td>"+row.phone+"</td></tr>");
+								domRow.appendTo(addressTable);
+							}
+						});
+					});
+				});
 			} else {
 				$("p:eq(0)").text("Oops! HTML5 databases are not supported with your browser.");
 			}
@@ -44,20 +56,5 @@
 				<th>Phone</th>
 			</tr>
 		</table>
-		<script type="text/javascript">
-			M.whenDone(function(){
-				db.transaction(function(t){
-					t.executeSql("select id, name, phone from user", [], function(t, res){
-						var rows = res.rows;
-						var addressTable = $("table.address_book");
-						for(var i = 0; i < rows.length; i++){
-							var row = rows.item(i);
-							var domRow = $("<tr><td>"+row.id+"</td><td>"+row.name+"</td><td>"+row.phone+"</td></tr>");
-							domRow.appendTo(addressTable);
-						}
-					});
-				});
-			});
-		</script>
 	</body>
 </html>
