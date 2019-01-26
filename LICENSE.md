@@ -1,3 +1,4 @@
+Copyright (c) 2019 Wayne Bloss <waynebloss@gmail.com>
 Copyright (c) 2010 Max Aller <nanodeath@gmail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
