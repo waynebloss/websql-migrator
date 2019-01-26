@@ -40,7 +40,9 @@ M.execute().then(function() {
 });
 ```
 
-See [test.html](./test.html) for a full working example.
+See
+[demo/address-book.html](./demo/address-book.html)
+for a full working example.
 
 ## Roadmap
 
