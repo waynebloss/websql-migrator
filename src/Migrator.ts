@@ -44,7 +44,7 @@ export class Migrator {
               function(_t, err) {
                 error("Error!: %o (while upgrading to %s from %s)", err, vnum);
                 reject(err);
-                return false;
+                return true;
               }
             );
           });
@@ -122,7 +122,7 @@ export class Migrator {
                           err
                         );
                         reject(err);
-                        return false;
+                        return true;
                       }
                     );
                   },
@@ -132,14 +132,14 @@ export class Migrator {
                       err
                     );
                     reject(err);
-                    return false;
+                    return true;
                   }
                 );
               } else {
                 error("Unrecoverable error resolving schema version: %o", err);
                 reject(err);
               }
-              return false;
+              return true;
             }
           );
         });
